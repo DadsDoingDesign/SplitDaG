@@ -97,12 +97,14 @@ export const AROverlay: React.FC<AROverlayProps> = ({
 
     if (r && r.glassBounds) {
       const { glassBounds: bounds, gPositionY, liquidLevelY, headTopY, splitStatus } = r;
+      // Use detected glass bounds for the lines — these are now tight to the
+      // actual glass, not the full guide box.
       const left  = bounds.x;
       const right = bounds.x + bounds.width;
 
-      // ── Glass outline ────────────────────────────────────────────────────────
+      // ── Glass outline (detected glass extent) ────────────────────────────────
       drawGlassOutline(ctx, left, bounds.y, bounds.width, bounds.height,
-        splitStatus === 'unknown' || splitStatus === 'no_liquid' ? 0.3 : 0.55);
+        splitStatus === 'unknown' || splitStatus === 'no_liquid' ? 0.3 : 0.6);
 
       // ── G-position line ──────────────────────────────────────────────────────
       if (gPositionY !== null) {
@@ -120,12 +122,20 @@ export const AROverlay: React.FC<AROverlayProps> = ({
         drawLiquidLine(ctx, { y: lvlY, left, right, status: splitStatus });
       }
 
-      // ── Delta arrow ──────────────────────────────────────────────────────────
+      // ── Delta arrow (to left of glass) ───────────────────────────────────────
       if (gPositionY !== null && lvlY !== null &&
           splitStatus !== 'no_liquid' && splitStatus !== 'unknown') {
-        const arrowX = left - 24;
+        const arrowX = left - 20;
         drawDeltaArrow(ctx, gPositionY, lvlY, arrowX, bounds.height);
       }
+    } else if (r && r.gPositionY !== null && r.splitStatus === 'no_liquid' && gb) {
+      // No liquid but show estimated G on guide box so user knows where to aim
+      drawGLine(ctx, {
+        y: r.gPositionY,
+        left: gb.x, right: gb.x + gb.width,
+        detected: false,
+        animOffset: dashOffsetRef.current,
+      });
     }
 
     // ── Split celebration ─────────────────────────────────────────────────────
