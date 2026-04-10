@@ -40,44 +40,55 @@ export default function App() {
     window.location.reload();
   }, []);
 
-  if (cameraState !== 'active') {
-    return (
-      <PermissionScreen
-        state={cameraState === 'requesting' ? 'requesting' : cameraState === 'error' ? 'error' : 'idle'}
-        errorMessage={errorMessage}
-        onStart={startCamera}
-      />
-    );
-  }
+  const isActive = cameraState === 'active';
 
   return (
     <div style={{ position: 'fixed', inset: 0, overflow: 'hidden', background: '#000',
       fontFamily: 'system-ui, -apple-system, sans-serif' }}>
 
+      {/*
+        The <video> is ALWAYS rendered so that videoRef.current exists
+        when startCamera() assigns srcObject to it. Hidden until active.
+      */}
       <video
         ref={videoRef}
-        playsInline muted autoPlay
-        style={{ position: 'absolute', top: 0, left: 0,
-          width: '100%', height: '100%', objectFit: 'cover' }}
+        playsInline
+        muted
+        style={{
+          position: 'absolute', top: 0, left: 0,
+          width: '100%', height: '100%', objectFit: 'cover',
+          display: isActive ? 'block' : 'none',
+        }}
       />
 
-      <AROverlay
-        width={containerSize.w}
-        height={containerSize.h}
-        result={result}
-        guideBox={guideBox}
-        splitConsecutive={splitConsecutive}
-        onSplit={handleSplit}
-      />
+      {isActive && (
+        <>
+          <AROverlay
+            width={containerSize.w}
+            height={containerSize.h}
+            result={result}
+            guideBox={guideBox}
+            splitConsecutive={splitConsecutive}
+            onSplit={handleSplit}
+          />
+          <HUD
+            result={result}
+            splitConsecutive={splitConsecutive}
+            torchSupported={torchSupported}
+            torchOn={torchOn}
+            onToggleTorch={toggleTorch}
+            onReset={handleReset}
+          />
+        </>
+      )}
 
-      <HUD
-        result={result}
-        splitConsecutive={splitConsecutive}
-        torchSupported={torchSupported}
-        torchOn={torchOn}
-        onToggleTorch={toggleTorch}
-        onReset={handleReset}
-      />
+      {!isActive && (
+        <PermissionScreen
+          state={cameraState === 'requesting' ? 'requesting' : cameraState === 'error' ? 'error' : 'idle'}
+          errorMessage={errorMessage}
+          onStart={startCamera}
+        />
+      )}
     </div>
   );
 }

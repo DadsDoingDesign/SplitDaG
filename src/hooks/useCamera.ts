@@ -48,13 +48,8 @@ export function useCamera(): UseCameraReturn {
       const caps = track.getCapabilities() as MediaTrackCapabilities & { torch?: boolean };
       setTorchSupported(!!caps.torch);
 
-      if (videoRef.current) {
-        videoRef.current.srcObject = stream;
-        await videoRef.current.play();
-        setVideoWidth(videoRef.current.videoWidth);
-        setVideoHeight(videoRef.current.videoHeight);
-      }
-
+      // Mark active first so the <video> element renders and the ref becomes valid,
+      // then attach the stream in the effect below via streamRef.
       setCameraState('active');
     } catch (err) {
       const msg = err instanceof Error
@@ -76,6 +71,21 @@ export function useCamera(): UseCameraReturn {
       // Torch toggle failed silently
     }
   }, [torchOn, torchSupported]);
+
+  // Once cameraState flips to 'active' the <video> element is in the DOM.
+  // Attach the stream and start playback here, safely after the render.
+  useEffect(() => {
+    if (cameraState !== 'active') return;
+    const video = videoRef.current;
+    const stream = streamRef.current;
+    if (!video || !stream) return;
+
+    video.srcObject = stream;
+    video.play().catch(() => {
+      // Autoplay blocked — the muted+playsInline combo should prevent this,
+      // but catch silently just in case.
+    });
+  }, [cameraState]);
 
   // Update dimensions when video metadata loads
   useEffect(() => {
