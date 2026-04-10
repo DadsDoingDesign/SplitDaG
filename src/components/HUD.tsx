@@ -102,7 +102,7 @@ export const HUD: React.FC<HUDProps> = ({
             {status === 'too_high' || status === 'too_low' ? (
               (() => {
                 const gY   = result.gPositionY;
-                const lvlY = result.headTopY ?? result.liquidLevelY;
+                const lvlY = result.liquidLevelY; // dark body top (below foam)
                 const h    = result.glassBounds?.height ?? 1;
                 if (gY !== null && lvlY !== null) {
                   const pct = Math.abs(Math.round(((lvlY - gY) / h) * 100));

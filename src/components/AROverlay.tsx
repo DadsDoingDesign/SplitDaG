@@ -96,17 +96,23 @@ export const AROverlay: React.FC<AROverlayProps> = ({
     }
 
     if (r && r.glassBounds) {
-      const { glassBounds: bounds, gPositionY, liquidLevelY, headTopY, splitStatus } = r;
-      // Use detected glass bounds for the lines — these are now tight to the
-      // actual glass, not the full guide box.
+      const { glassBounds: bounds, gPositionY, liquidLevelY, headTopY, headBottomY, splitStatus } = r;
       const left  = bounds.x;
       const right = bounds.x + bounds.width;
 
-      // ── Glass outline (detected glass extent) ────────────────────────────────
+      // ── Glass outline ────────────────────────────────────────────────────────
       drawGlassOutline(ctx, left, bounds.y, bounds.width, bounds.height,
         splitStatus === 'unknown' || splitStatus === 'no_liquid' ? 0.3 : 0.6);
 
-      // ── G-position line ──────────────────────────────────────────────────────
+      // ── Foam zone indicator (subtle shaded band between head top and body) ───
+      if (headTopY !== null && headBottomY !== null && headBottomY > headTopY) {
+        ctx.save();
+        ctx.fillStyle = 'rgba(255, 220, 100, 0.10)';
+        ctx.fillRect(left, headTopY, bounds.width, headBottomY - headTopY);
+        ctx.restore();
+      }
+
+      // ── G-position line (anchored to glass width — stable, not foam-dependent)
       if (gPositionY !== null) {
         drawGLine(ctx, {
           y: gPositionY,
@@ -116,20 +122,20 @@ export const AROverlay: React.FC<AROverlayProps> = ({
         });
       }
 
-      // ── Liquid level line ────────────────────────────────────────────────────
-      const lvlY = headTopY ?? liquidLevelY;
+      // ── Liquid level line = dark BODY top (below foam) ───────────────────────
+      // liquidLevelY = headBottomY = where foam ends and Guinness body begins.
+      // This is what the user actually drinks to — ignore the foam.
+      const lvlY = liquidLevelY; // headBottomY, set in analyseGlass
       if (lvlY !== null && splitStatus !== 'no_liquid') {
         drawLiquidLine(ctx, { y: lvlY, left, right, status: splitStatus });
       }
 
-      // ── Delta arrow (to left of glass) ───────────────────────────────────────
+      // ── Delta arrow ──────────────────────────────────────────────────────────
       if (gPositionY !== null && lvlY !== null &&
           splitStatus !== 'no_liquid' && splitStatus !== 'unknown') {
-        const arrowX = left - 20;
-        drawDeltaArrow(ctx, gPositionY, lvlY, arrowX, bounds.height);
+        drawDeltaArrow(ctx, gPositionY, lvlY, left - 20, bounds.height);
       }
     } else if (r && r.gPositionY !== null && r.splitStatus === 'no_liquid' && gb) {
-      // No liquid but show estimated G on guide box so user knows where to aim
       drawGLine(ctx, {
         y: r.gPositionY,
         left: gb.x, right: gb.x + gb.width,

@@ -134,20 +134,37 @@ function findLiquidBottom(
   searchFrom: number,
   searchTo: number
 ): number | null {
-  const colSpan   = colRight - colLeft + 1;
-  const stepX     = Math.max(1, Math.round(colSpan / 10));
-  const minFrac   = 0.20;
-  const minCount  = Math.max(1, Math.round((colSpan / stepX) * minFrac));
+  const colSpan  = colRight - colLeft + 1;
+  const stepX    = Math.max(1, Math.round(colSpan / 10));
+  const minFrac  = 0.20;
+  const minCount = Math.max(1, Math.round((colSpan / stepX) * minFrac));
 
-  for (let row = searchTo - 1; row >= searchFrom; row--) {
+  // Scan TOP-DOWN and stop as soon as the dark content ends.
+  // This prevents the dark bar/table surface below the glass from
+  // being counted as the glass bottom.
+  // Allow up to MAX_GAP consecutive non-dark rows (glass base is clear,
+  // reflections can cause brief gaps).
+  const MAX_GAP = 6;
+  let lastDarkRow:    number | null = null;
+  let consecutiveGap = 0;
+
+  for (let row = searchFrom; row < searchTo; row++) {
     let count = 0;
     for (let col = colLeft; col <= colRight; col += stepX) {
       const i = (row * imgWidth + col) * 4;
       if (isGuinnessLiquid(data[i], data[i + 1], data[i + 2])) count++;
     }
-    if (count >= minCount) return row;
+    if (count >= minCount) {
+      lastDarkRow    = row;
+      consecutiveGap = 0;
+    } else {
+      consecutiveGap++;
+      // Once dark content ends for more than MAX_GAP rows we've left the glass
+      if (lastDarkRow !== null && consecutiveGap > MAX_GAP) break;
+    }
   }
-  return null;
+
+  return lastDarkRow;
 }
 
 // ── Step 3: G logo edge-energy detection ──────────────────────────────────
@@ -232,25 +249,49 @@ export function analyseGlass(
     searchBounds.y + searchBounds.height
   );
 
-  // Glass top ≈ cream head top, glass bottom ≈ last dark pixel row
-  const glassTop    = headTopY;
+  // Glass base = bottom of dark liquid (reliable proxy)
   const glassBottom = liquidBottom ?? headBottomY;
-  const glassHeight = Math.max(1, glassBottom - glassTop);
 
-  // 3. Detect / estimate G position within detected glass
+  // ── G position: anchored to glass WIDTH, not liquid height ────────────────
+  //
+  // The Guinness G logo is a fixed physical feature of the glass.
+  // On a standard pint glass the G sits ~0.87 × glass-width above the base.
+  // Using glass width as the scale reference means the G line stays stable
+  // whether the glass is full, half-drunk, or the foam is thick or thin.
+  //
+  // Guinness pint geometry (approx):
+  //   glass width at widest (≈ where foam is): ~80 mm
+  //   G height from base:                      ~70 mm
+  //   ratio = 70 / 80 ≈ 0.87
+  const glassWidth  = colRight - colLeft;
+  const G_RATIO     = 0.87; // tuned for a standard Guinness pint glass
+
+  // 3. Edge-energy G detection, then fall back to width-based estimate
   const { y: gPositionY, detected } = detectGLogo(
-    data, width, colLeft, colRight, glassTop, glassBottom
+    data, width, colLeft, colRight,
+    headTopY,   // scan starts at foam top
+    glassBottom
   );
 
-  // 4. Split-the-G check — liquid level = top of cream head
-  const tolerance = glassHeight * 0.05;
-  const liquidY   = headTopY; // user drinks to the top of the head
+  // If the edge detector didn't fire, use the width-based geometric estimate
+  const gY = detected
+    ? gPositionY
+    : glassBottom - glassWidth * G_RATIO;
 
-  const diff = liquidY - gPositionY; // positive → liquid is BELOW G (too low)
+  // ── Split-the-G check ─────────────────────────────────────────────────────
+  //
+  // Liquid level = TOP OF THE DARK BODY (headBottomY), i.e. below the foam.
+  // "Splitting the G" means the dark Guinness surface is level with the G —
+  // not the foam top, which changes as the head settles.
+  const darkBodyTop = headBottomY; // foam bottom = dark liquid surface
+  const refHeight   = glassWidth * G_RATIO; // same scale as G estimate
+  const tolerance   = refHeight * 0.06;    // ±6% of G-height
+
+  const diff = darkBodyTop - gY; // positive → dark surface is BELOW G (too low)
   let splitStatus: DetectionResult['splitStatus'];
-  if (Math.abs(diff) <= tolerance)  splitStatus = 'perfect';
-  else if (diff < -tolerance)       splitStatus = 'too_high'; // head above G
-  else                              splitStatus = 'too_low';  // head below G
+  if (Math.abs(diff) <= tolerance) splitStatus = 'perfect';
+  else if (diff < -tolerance)      splitStatus = 'too_high'; // dark body above G
+  else                             splitStatus = 'too_low';  // dark body below G
 
   const confidence = liquidBottom !== null
     ? (detected ? 0.85 : 0.65)
@@ -259,14 +300,15 @@ export function analyseGlass(
   return {
     glassBounds: {
       x:      colLeft,
-      y:      glassTop,
-      width:  colRight - colLeft,
-      height: glassHeight,
+      y:      headTopY,
+      width:  glassWidth,
+      height: Math.max(1, glassBottom - headTopY),
     },
-    liquidLevelY: liquidBottom ?? headBottomY,
+    // liquidLevelY = dark body top (used for the split-line display)
+    liquidLevelY: darkBodyTop,
     headTopY,
     headBottomY,
-    gPositionY,
+    gPositionY: gY,
     splitStatus,
     confidence,
   };
