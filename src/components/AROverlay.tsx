@@ -5,7 +5,6 @@ import {
   drawGLine,
   drawLiquidLine,
   drawDeltaArrow,
-  drawGlassOutline,
   drawGuideBox,
   drawSplitFlash,
   drawConfetti,
@@ -84,13 +83,29 @@ export const AROverlay: React.FC<AROverlayProps> = ({
     dashOffsetRef.current += 0.6;
     pulseRef.current = (Math.sin(Date.now() / 600) + 1) / 2;
 
-    // ── Guide box ─────────────────────────────────────────────────────────────
-    if (gb) {
-      const hasLiquid = r !== null && r.splitStatus !== 'no_liquid' && r.splitStatus !== 'unknown';
+    // ── Bracket / hitbox — tracks detected glass, falls back to fixed guide ────
+    //
+    // When a glass is detected, the corner brackets snap to the detected glass
+    // bounds (with a small padding), so they follow zoom and movement.
+    // When no glass is found, show the fixed guide so the user knows where to aim.
+    const hasGlass = r !== null && r.glassBounds !== null;
+    const BRACKET_PAD = 12; // px gap between glass edge and bracket corner
+
+    if (hasGlass && r!.glassBounds) {
+      const b = r!.glassBounds;
+      drawGuideBox(ctx, {
+        x:      b.x      - BRACKET_PAD,
+        y:      b.y      - BRACKET_PAD,
+        width:  b.width  + BRACKET_PAD * 2,
+        height: b.height + BRACKET_PAD * 2,
+        hasGlass: true,
+        pulse:    pulseRef.current,
+      });
+    } else if (gb) {
       drawGuideBox(ctx, {
         x: gb.x, y: gb.y,
         width: gb.width, height: gb.height,
-        hasGlass: hasLiquid,
+        hasGlass: false,
         pulse: pulseRef.current,
       });
     }
@@ -100,11 +115,7 @@ export const AROverlay: React.FC<AROverlayProps> = ({
       const left  = bounds.x;
       const right = bounds.x + bounds.width;
 
-      // ── Glass outline ────────────────────────────────────────────────────────
-      drawGlassOutline(ctx, left, bounds.y, bounds.width, bounds.height,
-        splitStatus === 'unknown' || splitStatus === 'no_liquid' ? 0.3 : 0.6);
-
-      // ── Foam zone indicator (subtle shaded band between head top and body) ───
+      // ── Foam zone indicator ──────────────────────────────────────────────────
       if (headTopY !== null && headBottomY !== null && headBottomY > headTopY) {
         ctx.save();
         ctx.fillStyle = 'rgba(255, 220, 100, 0.10)';
@@ -112,7 +123,7 @@ export const AROverlay: React.FC<AROverlayProps> = ({
         ctx.restore();
       }
 
-      // ── G-position line (anchored to glass width — stable, not foam-dependent)
+      // ── G-position line ──────────────────────────────────────────────────────
       if (gPositionY !== null) {
         drawGLine(ctx, {
           y: gPositionY,
@@ -122,10 +133,8 @@ export const AROverlay: React.FC<AROverlayProps> = ({
         });
       }
 
-      // ── Liquid level line = dark BODY top (below foam) ───────────────────────
-      // liquidLevelY = headBottomY = where foam ends and Guinness body begins.
-      // This is what the user actually drinks to — ignore the foam.
-      const lvlY = liquidLevelY; // headBottomY, set in analyseGlass
+      // ── Liquid level line (dark body top — below foam) ───────────────────────
+      const lvlY = liquidLevelY;
       if (lvlY !== null && splitStatus !== 'no_liquid') {
         drawLiquidLine(ctx, { y: lvlY, left, right, status: splitStatus });
       }
